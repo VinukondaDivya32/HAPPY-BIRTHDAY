@@ -1,5 +1,20 @@
+# Credentials and tokens
 credentials.json
 token.json
 .env
+
+# Virtual environment
 .venv/
+venv/
+.venv
+
+# Thumbnails and generated files
 .thumbnails/
+
+# Python cache
+__pycache__/
+.pytest_cache/
+
+# Editor files
+.vscode/
+*.pyc
