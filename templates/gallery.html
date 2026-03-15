@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Cloud Photo Gallery</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Cloud Photo Gallery</h1>
+      <p class="subtitle">Serving images from Google Drive and Azure</p>
+      <div class="pathbar">
+        {% if current_path == 'favorites' %}
+          <a class="up" href="{{ url_for('gallery') }}">🖼️ Gallery</a>
+          <span class="curpath">/❤ Favorites</span>
+        {% else %}
+          <a class="up disabled" href="{{ url_for('gallery') }}">🖼️ Gallery</a>
+          <a class="view-favs" href="{{ url_for('favorites_view') }}">❤ View Favorites</a>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if show_intro %}
+    <div id="introOverlay" class="intro-screen" data-card-src="{{ url_for('static', filename='greeting-card/card.png') }}" data-enter-url="{{ url_for('gallery') }}">
+      <div class="intro-stage">
+        <div class="balloon-container" aria-hidden="true"></div>
+        <div class="sparkle-container" aria-hidden="true"></div>
+
+        <div class="card-wrapper">
+          <div class="ribbon ribbon-left" aria-hidden="true"></div>
+          <div class="ribbon ribbon-right" aria-hidden="true"></div>
+
+          <img id="greetingCard" src="{{ url_for('static', filename='greeting-card/card.png') }}" alt="Greeting card" />
+        </div>
+
+        <div class="confetti-container" id="confetti" aria-hidden="true"></div>
+
+        <div class="enter-text">Tap anywhere to enter the gallery</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <main class="container" id="mainSite" {% if show_intro %}style="display:none;"{% endif %}>
+      <section class="grid">
+        {% for item in images %}
+        <figure class="photo">
+          <div class="thumb-wrapper">
+            {% if item.type == 'video' %}
+              <img data-full="{{ item.image_url }}" data-type="video" src="{{ item.thumbnail_url }}" alt="Video: {{ item.filename }}" loading="lazy" />
+              <div class="play-overlay">▶</div>
+            {% else %}
+              <img data-full="{{ item.image_url }}" data-type="image" src="{{ item.thumbnail_url }}" alt="Image: {{ item.filename }}" loading="lazy" />
+            {% endif %}
+            <button class="favorite-btn {% if item.id in favorites %}favorited{% endif %}" data-id="{{ item.id }}" aria-label="Toggle Favorite">❤</button>
+          </div>
+        </figure>
+        {% endfor %}
+
+        {% if not images %}
+        <p class="empty">No images found.</p>
+        {% endif %}
+      </section>
+
+      {% if total_pages and total_pages > 1 %}
+      <div class="pagination">
+        {% if page > 1 %}
+          <a class="pager prev" href="{{ url_for(browse_ep, page=page-1) }}">← Previous</a>
+        {% else %}
+          <span class="pager disabled">← Previous</span>
+        {% endif %}
+
+        <span class="pages">Page {{ page }} of {{ total_pages }}</span>
+
+        {% if page < total_pages %}
+          <a class="pager next" href="{{ url_for(browse_ep, page=page+1) }}">Next →</a>
+        {% else %}
+          <span class="pager disabled">Next →</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </main>
+
+    <div id="lightbox" class="lightbox hidden" onclick="closeLightbox(event)">
+      <div id="lightbox-content"></div>
+      <div class="lightbox-controls">
+        <button id="lbPrev" class="lightbox-btn" aria-label="Previous">◀</button>
+        <button id="lbPlayPause" class="lightbox-btn" aria-label="Play/Pause">Play</button>
+        <button id="lbNext" class="lightbox-btn" aria-label="Next">▶</button>
+        <button id="lbClose" class="lightbox-btn" aria-label="Close">✕</button>
+      </div>
+    </div>
+
+    <script>
+      // Enhanced Lightbox with slideshow controls
+      (function(){
+        const lb = document.getElementById('lightbox')
+        const content = document.getElementById('lightbox-content')
+        function $(id){return document.getElementById(id)}
+        const prevBtn = $('lbPrev')
+        const nextBtn = $('lbNext')
+        const playBtn = $('lbPlayPause')
+        const closeBtn = $('lbClose')
+
+        let items = [] // {src,type}
+        let current = 0
+        let slideshowInterval = null
+        let isPlaying = false
+        let videoEndHandler = null
+
+        function collectItems(){
+          const imgs = Array.from(document.querySelectorAll('.photo img'))
+          return imgs.map(i=>({src:i.dataset.full||i.src, type:i.dataset.type||'image'}))
+        }
+
+        function renderItem(idx){
+          content.innerHTML = ''
+          const it = items[idx]
+          if (!it) return
+          if (it.type === 'video'){
+            const video = document.createElement('video')
+            video.controls = true
+            video.style.maxWidth = '95%'
+            video.style.maxHeight = '95%'
+            video.src = it.src
+            video.autoplay = false
+            content.appendChild(video)
+            return video
+          } else {
+            const im = document.createElement('img')
+            im.src = it.src
+            im.alt = ''
+            im.style.maxWidth = '95%'
+            im.style.maxHeight = '95%'
+            content.appendChild(im)
+            return null
+          }
+        }
+
+        function openAt(index){
+          items = collectItems()
+          current = index
+          renderItem(current)
+          lb.classList.remove('hidden')
+        }
+
+        function stopSlideshow(){
+          isPlaying = false
+          playBtn && (playBtn.textContent = 'Play')
+          if (slideshowInterval){ clearInterval(slideshowInterval); slideshowInterval = null }
+          const v = content.querySelector('video')
+          if (v && videoEndHandler){ v.removeEventListener('ended', videoEndHandler); videoEndHandler = null }
+        }
+
+        function startSlideshow(){
+          if (isPlaying) return
+          isPlaying = true
+          playBtn && (playBtn.textContent = 'Pause')
+          const currentElIsVideo = items[current] && items[current].type === 'video'
+          if (currentElIsVideo){
+            const v = content.querySelector('video')
+            if (v){
+              v.currentTime = 0
+              v.play()
+              videoEndHandler = function(){
+                videoEndHandler = null
+                nextItem()
+                if (isPlaying) startSlideshow()
+              }
+              v.addEventListener('ended', videoEndHandler)
+              return
+            }
+          }
+          slideshowInterval = setInterval(()=>{
+            nextItem()
+            const v = content.querySelector('video')
+            if (v){
+              clearInterval(slideshowInterval); slideshowInterval = null
+              v.currentTime = 0; v.play()
+              videoEndHandler = function(){
+                videoEndHandler = null
+                nextItem()
+                if (isPlaying) startSlideshow()
+              }
+              v.addEventListener('ended', videoEndHandler)
+            }
+          }, 3000)
+        }
+
+        function nextItem(){
+          const v = content.querySelector('video')
+          if (v && videoEndHandler){ v.removeEventListener('ended', videoEndHandler); videoEndHandler = null }
+          if (slideshowInterval){ clearInterval(slideshowInterval); slideshowInterval = null }
+          current = (current + 1) % items.length
+          renderItem(current)
+          if (isPlaying) startSlideshow()
+        }
+
+        function prevItem(){
+          const v = content.querySelector('video')
+          if (v && videoEndHandler){ v.removeEventListener('ended', videoEndHandler); videoEndHandler = null }
+          if (slideshowInterval){ clearInterval(slideshowInterval); slideshowInterval = null }
+          current = (current - 1 + items.length) % items.length
+          renderItem(current)
+          if (isPlaying) startSlideshow()
+        }
+
+        document.addEventListener('click', function(e){
+          const t = e.target
+          if ((t.tagName === 'IMG' || t.closest('.thumb-wrapper')) && t.closest('.photo')) {
+            if (t.closest('.favorite-btn')) return
+            const img = t.tagName === 'IMG' ? t : t.querySelector('img')
+            const thumbnails = Array.from(document.querySelectorAll('.photo img'))
+            const idx = thumbnails.indexOf(img)
+            if (idx >= 0){ openAt(idx) }
+          }
+          if (e.target.id === 'lightbox') { closeLightbox() }
+        })
+
+        function closeLightbox(){ stopSlideshow(); lb.classList.add('hidden'); content.innerHTML = '' }
+
+        if (prevBtn) prevBtn.addEventListener('click', function(e){ e.stopPropagation(); stopSlideshow(); prevItem() })
+        if (nextBtn) nextBtn.addEventListener('click', function(e){ e.stopPropagation(); stopSlideshow(); nextItem() })
+        if (playBtn) playBtn.addEventListener('click', function(e){ e.stopPropagation(); if (isPlaying) stopSlideshow(); else startSlideshow() })
+        if (closeBtn) closeBtn.addEventListener('click', function(e){ e.stopPropagation(); closeLightbox() })
+
+        window.closeLightbox = closeLightbox
+      })()
+    </script>
+
+    <script>
+      // Favorites: send toggle requests and update UI
+      async function toggleFavorite(id, btn){
+        try{
+          const res = await fetch('{{ url_for('toggle_favorite') }}', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({id: id})
+          })
+          if (!res.ok) throw new Error('Network')
+          const data = await res.json()
+          if (data.is_favorite) btn.classList.add('favorited')
+          else btn.classList.remove('favorited')
+        }catch(err){ console.error('Favorite toggle failed', err) }
+      }
+
+      document.addEventListener('click', function(e){
+        const btn = e.target.closest && e.target.closest('.favorite-btn')
+        if (btn){ e.stopPropagation(); const id = btn.dataset.id; toggleFavorite(id, btn) }
+      })
+    </script>
+    
+      {% if show_intro %}
+      <script src="{{ url_for('static', filename='intro.js') }}"></script>
+      {% endif %}
+  </body>
+</html>

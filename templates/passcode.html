@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Enter Passcode</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <style>
+      .passbox{max-width:420px;margin:80px auto;padding:24px;background:rgba(255,255,255,0.02);border-radius:10px;text-align:center}
+      .passbox input{width:100%;padding:10px;margin:10px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:#e6eef6}
+      .passbox button{padding:10px 16px;border-radius:8px;border:0;background:var(--accent);color:#042031;cursor:pointer}
+      .error{color:#ff9b9b;margin-top:8px}
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <div class="passbox">
+        <h2>Hidden Gallery</h2>
+        <p>Enter passcode to continue</p>
+        <form method="post" action="{{ url_for('secret') }}">
+          <input name="passcode" type="password" placeholder="Passcode" autofocus />
+          <div>
+            <button type="submit">Submit</button>
+          </div>
+        </form>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+      </div>
+    </main>
+  </body>
+</html>
